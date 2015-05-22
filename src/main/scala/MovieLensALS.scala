@@ -238,8 +238,8 @@ object MovieLensALS {
       i += 1
     }
 
+    println("\n")
     // clean up
-
     sc.stop();
   }
 
