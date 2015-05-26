@@ -16,6 +16,7 @@ import org.apache.spark.mllib.recommendation.{ALS, Rating, MatrixFactorizationMo
 // Version: access rate files from HDFS
 // Wed May 20 06:30:36 PDT 2015
 // Changed by Weiping He
+// Tue May 26 14:59:55 PDT 2015, edited by Weiping. Train the data before asking for user input.
 
 object MovieLensALS {
 
