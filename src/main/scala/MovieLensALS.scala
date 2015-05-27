@@ -22,6 +22,7 @@ object MovieLensALS {
 
   def main(args: Array[String]) {
 
+    println("\nStart running...")
     // remove verbose log
     Logger.getLogger("org.apache.spark").setLevel(Level.OFF)
     Logger.getLogger("org.eclipse.jetty.server").setLevel(Level.OFF)    
@@ -63,6 +64,7 @@ object MovieLensALS {
     val sc = new SparkContext(conf)
 
     // load ratings and movie titles
+     println("\nStep 1, load ratings and movie titles.")
 
     // hdfs://localhost.localdomain:8020/user/hdfs
     val movieLensHomeDir = "hdfs://" + masterHostname + ":8020"+ args(0)
@@ -97,47 +99,15 @@ object MovieLensALS {
     val numUsers = ratings.map(_._2.user).distinct.count
     val numMovies = ratings.map(_._2.product).distinct.count
 
-    println("\nGot " + numRatings + " ratings from "
+    println("Loaded data: " + numRatings + " ratings from "
       + numUsers + " users on " + numMovies + " movies.")
-
-    // sample a subset of most rated movies for rating elicitation
-
-    // count ratings received for each movie and sort movies by rating counts
-    // The Rating class is a wrapper around tuple (user: Int, product: Int, rating: Double)
-    // product: Int is the movie id
-    val mostRatedMovieIds = ratings.map(_._2.product) // extract movie ids
-                                   .countByValue      // count ratings per movie
-                                   .toSeq             // convert map to Seq
-                                   .sortBy(- _._2)    // sort by rating count
-                                   .take(50)          // take 50 most rated
-                                   .map(_._1)         // get their ids
-
-    val random = new Random(0)
-
-    val selectedMovies = mostRatedMovieIds.filter(x => random.nextDouble() < 0.2) // randomly select some movies
-                                          .map(x => (x, movies(x))) // Get the entire movie info from map movies
-                                          .toSeq
-
-    // elicitate ratings
-
-    val myRatings = elicitateRatings(selectedMovies)
-
-    // The ratings are converted to a RDD[Rating] instance via sc.parallelize.
-    val myRatingsRDD = sc.parallelize(myRatings, 1)
-    // Parallelized collections are created by calling SparkContext's parallelize method on an existing collection
-    // The elements of the collection are copied to form a distributed dataset that can be operated on in parallel.
-    // Once created, the distributed dataset (myRatingsRDD) can be operated on in parallel.
-    // One important parameter for parallel collections is the number of partitions to cut the dataset into.
-    // Spark will run one task for each partition of the cluster.
-    // you can also set it manually by passing it as a second parameter to parallelize().
-
 
     // We will use MLlib’s ALS to train a MatrixFactorizationModel, 
     // which takes a RDD[Rating] object as input. 
     // ALS has training parameters such as rank for matrix factors and regularization constants. 
     // To determine a good combination of the training parameters,
     // we split ratings into train (60%), validation (20%), and test (20%) based on the 
-    // last digit of the timestamp, add myRatings to train, and cache them
+    // last digit of the timestamp, and cache them
 
     val numPartitions = 20
     // ratings format // format: (timestamp % 10, Rating(userId, movieId, rating))
@@ -145,7 +115,6 @@ object MovieLensALS {
     // change to 30%, 10% and 10%
     val training = ratings.filter(x => x._1 <= 3)
                           .values
-                          .union(myRatingsRDD)
                           .repartition(numPartitions)
                           .persist
     // val validation = ratings.filter(x => x._1 >= 3 && x._1 < 8)
@@ -160,21 +129,22 @@ object MovieLensALS {
     val numValidation = validation.count
     val numTest = test.count
 
-    println("\nTraining: " + numTraining + " ratings, validation: " + numValidation + " ratings, test: " + numTest + " ratings.")
+    println("\nStep 2, Training with " + numTraining + " ratings.")
+    // println("\nTraining: " + numTraining + " ratings, validation: " + numValidation + " ratings, test: " + numTest + " ratings.")
 
     // train models and evaluate them on the validation set
     // we will test only 8 combinations resulting from the cross product of 2 different ranks (8 and 12)
     // use rank 12 to reduce the running time
-    // val ranks = List(8, 12)
-    val ranks = List(12)
+    val ranks = List(8, 12)
+    // val ranks = List(12)
 
     // 2 different lambdas (1.0 and 10.0)
     val lambdas = List(0.1, 10.0)
 
     // two different numbers of iterations (10 and 20)
     // use numIters 20 to reduce the running time
-    //  val numIters = List(10, 20)
-    val numIters = List(20)
+    val numIters = List(10, 20)
+    // val numIters = List(10)
 
     // We use the provided method computeRmse to compute the RMSE on the validation set for each model.
     // The model with the smallest RMSE on the validation set becomes the one selected 
@@ -194,9 +164,10 @@ object MovieLensALS {
       // return  math.sqrt, type is double
       // model is from training.
       val validationRmse = computeRmse(model, validation, numValidation)
-      // println("RMSE (validation) = " + validationRmse + " for the model trained with rank = " 
-      //   + rank + ", lambda = " + lambda + ", and numIter = " + numIter + ".")
+      println("RMSE (validation) = " + validationRmse + " for the model trained with rank = " 
+         + rank + ", lambda = " + lambda + ", and numIter = " + numIter + ".")
       if (validationRmse < bestValidationRmse) {
+        println("inside bestModel  " +  bestModel);
         bestModel = Some(model)
         bestValidationRmse = validationRmse
         bestRank = rank
@@ -206,11 +177,12 @@ object MovieLensALS {
     }
 
     // evaluate the best model on the test set
+    println("\nStep 3, evaluate the best model on the test set.")
 
-    // val testRmse = computeRmse(bestModel.get, test, numTest)
+    val testRmse = computeRmse(bestModel.get, test, numTest)
 
-    // println("The best model was trained with rank = " + bestRank + " and lambda = " + bestLambda
-    //   + ", and numIter = " + bestNumIter + ", and its RMSE on the test set is " + testRmse + ".")
+    println("The best model was trained with rank = " + bestRank + " and lambda = " + bestLambda
+       + ", and numIter = " + bestNumIter + ", and its RMSE on the test set is " + testRmse + ".")
 
     // create a naive baseline and compare it with the best model
 
@@ -224,20 +196,74 @@ object MovieLensALS {
     // in class MatrixFactorizationModel
     // def predict(userProducts: RDD[(Int, Int)]): RDD[Rating] 
 
+
+    println("\nStep 4, provide with real time ratings from user input.")
+
+    // sample a subset of most rated movies for rating elicitation
+
+    // count ratings received for each movie and sort movies by rating counts
+    // The Rating class is a wrapper around tuple (user: Int, product: Int, rating: Double)
+    // product: Int is the movie id
+    val mostRatedMovieIds = ratings.map(_._2.product) // extract movie ids
+                                   .countByValue      // count ratings per movie
+                                   .toSeq             // convert map to Seq
+                                   .sortBy(- _._2)    // sort by rating count
+                                   .take(50)          // take 50 most rated
+                                   .map(_._1)         // get their ids
+
+    val random = new Random(0)
+
+    val selectedMovies = mostRatedMovieIds.filter(x => random.nextDouble() < 0.2) // randomly select some movies
+                                          .map(x => (x, movies(x))) // Get the entire movie info from map movies
+                                          .toSeq
+    println("val selectedMovies = " + selectedMovies)
+
+    // elicitate ratings
+    val myRatings = elicitateRatings(selectedMovies)
+    println(" --------------------------------------------------- " )
+     println(" val myRatings " + myRatings)
+    println(" --------------------------------------------------- " )
+
+    println("\nStep 5, Recommending movies for you")
+    // The ratings are converted to a RDD[Rating] instance via sc.parallelize.
+    val myRatingsRDD = sc.parallelize(myRatings, 1)
+
     val myRatedMovieIds = myRatings.map(_.product).toSet
+    println(" --------------------------------------------------- " )
+     println(" val myRatedMovieIds " + myRatedMovieIds)
+    println(" --------------------------------------------------- " )
+
     val candidates = sc.parallelize(movies.keys.filter(!myRatedMovieIds.contains(_)).toSeq)
+    println(" --------------------------------------------------- " )
+    println(" val candidates " )
+    candidates.take(20).foreach(println)
+    println(" --------------------------------------------------- " )
+    println(" val candidates.map((0, _)).toSet "  )
+    println(" val candidates.map((0, _)).toSet " + candidates.map((0, _)).take(20).foreach(println) )
+
+    println(" --------------------------------------------------- " )
+    val testpredict  = bestModel.get.predict( candidates.map((0, _)) )
+    testpredict.take(20).foreach(println)
+    println(" --------------------------------------------------- " )
+     println("bestModel.get " + bestModel.get.predict(candidates.map((0, _))).take(20).foreach(println))
+    // println("bestModel " +  bestModel )
+    // use candidates.map((0, _)) returns an empty set.
+    // use candidates.map((1, _)) returns a recommend list set.
+    // it means the user real time data must be in the training set.
     val recommendations = bestModel.get
-                                   .predict(candidates.map((0, _)))
+                                   .predict(candidates.map((1, _)))
                                    .collect
                                    .sortBy(- _.rating)
                                    .take(50)
 
     var i = 1
+    println(" --------------------------------------------------- " )
     println("\nMovies recommended for you:")
     recommendations.foreach { r =>
       println("\t" + "%2d".format(i) + ": " + movies(r.product))
       i += 1
     }
+    println(" --------------------------------------------------- " )
 
     println("\n")
     // clean up
