@@ -129,22 +129,22 @@ object MovieLensALS {
     val numValidation = validation.count
     val numTest = test.count
 
-    println("\nStep 2, Training with " + numTraining + " ratings.")
+    println("\nStep 2, train with " + numTraining + " ratings.")
     // println("\nTraining: " + numTraining + " ratings, validation: " + numValidation + " ratings, test: " + numTest + " ratings.")
 
     // train models and evaluate them on the validation set
     // we will test only 8 combinations resulting from the cross product of 2 different ranks (8 and 12)
     // use rank 12 to reduce the running time
-    val ranks = List(8, 12)
-    // val ranks = List(12)
+    // val ranks = List(8, 12)
+    val ranks = List(12)
 
     // 2 different lambdas (1.0 and 10.0)
     val lambdas = List(0.1, 10.0)
 
     // two different numbers of iterations (10 and 20)
     // use numIters 20 to reduce the running time
-    val numIters = List(10, 20)
-    // val numIters = List(10)
+    // val numIters = List(10, 20)
+    val numIters = List(10)
 
     // We use the provided method computeRmse to compute the RMSE on the validation set for each model.
     // The model with the smallest RMSE on the validation set becomes the one selected 
@@ -164,10 +164,10 @@ object MovieLensALS {
       // return  math.sqrt, type is double
       // model is from training.
       val validationRmse = computeRmse(model, validation, numValidation)
-      println("RMSE (validation) = " + validationRmse + " for the model trained with rank = " 
-         + rank + ", lambda = " + lambda + ", and numIter = " + numIter + ".")
+      // println("RMSE (validation) = " + validationRmse + " for the model trained with rank = " 
+      //    + rank + ", lambda = " + lambda + ", and numIter = " + numIter + ".")
       if (validationRmse < bestValidationRmse) {
-        println("inside bestModel  " +  bestModel);
+        // println("inside bestModel  " +  bestModel);
         bestModel = Some(model)
         bestValidationRmse = validationRmse
         bestRank = rank
@@ -197,8 +197,10 @@ object MovieLensALS {
     // def predict(userProducts: RDD[(Int, Int)]): RDD[Rating] 
 
 
-    println("\nStep 4, provide with real time ratings from user input.")
+    println("\nStep 4, provide with real time recommendations from user input.")
 
+    /* comment it out, just ask the user to pick a uid, then give a list of recommendation
+     *
     // sample a subset of most rated movies for rating elicitation
 
     // count ratings received for each movie and sort movies by rating counts
@@ -233,6 +235,8 @@ object MovieLensALS {
      println(" val myRatedMovieIds " + myRatedMovieIds)
     println(" --------------------------------------------------- " )
 
+    
+
     val candidates = sc.parallelize(movies.keys.filter(!myRatedMovieIds.contains(_)).toSeq)
     println(" --------------------------------------------------- " )
     println(" val candidates " )
@@ -244,29 +248,40 @@ object MovieLensALS {
     println(" --------------------------------------------------- " )
     val testpredict  = bestModel.get.predict( candidates.map((0, _)) )
     testpredict.take(20).foreach(println)
-    println(" --------------------------------------------------- " )
-     println("bestModel.get " + bestModel.get.predict(candidates.map((0, _))).take(20).foreach(println))
+    */
+   
+    var userid : Int = -1;
+    while (userid !=0 ) {
+    print( "\nPlease input user id (0 to exit): ")
+    userid = Console.readInt
+    if (userid < 0 || userid > 100) {
+            println("User id is out of range, please input a valid user id (1 to 100). ")
+    }else if ( userid !=0 ) { 
+    val candidates = sc.parallelize(movies.keys.toSeq)
+
+    // println("bestModel.get " + bestModel.get.predict(candidates.map((0, _))).take(20).foreach(println))
     // println("bestModel " +  bestModel )
     // use candidates.map((0, _)) returns an empty set.
     // use candidates.map((1, _)) returns a recommend list set.
     // it means the user real time data must be in the training set.
     val recommendations = bestModel.get
-                                   .predict(candidates.map((1, _)))
+                                   .predict(candidates.map((userid, _)))
                                    .collect
                                    .sortBy(- _.rating)
-                                   .take(50)
-
+                                   .take(30)
     var i = 1
-    println(" --------------------------------------------------- " )
-    println("\nMovies recommended for you:")
+    println("------------------------------------------------------------------ " )
+    println(" Movies recommended for you:")
     recommendations.foreach { r =>
       println("\t" + "%2d".format(i) + ": " + movies(r.product))
       i += 1
     }
-    println(" --------------------------------------------------- " )
+    println("------------------------------------------------------------------ " )
+    }
 
-    println("\n")
+    }
     // clean up
+    println("Exiting...");
     sc.stop();
   }
 
