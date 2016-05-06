@@ -28,7 +28,7 @@ object SparkGrep {
 		val Matches = inputFile.filter(line => line.contains(matchTerm))
 		Matches.collect().foreach(println)
 		val numMatches = inputFile.filter(line => line.contains(matchTerm)).count()
-		println("%s lines in %s contain %s".format(Matches, args(1), matchTerm))
+		println("%s lines in %s contain %s".format(numMatches, args(1), matchTerm))
 		System.exit(0)
 	}
 }
